@@ -1,0 +1,24 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI (guest / guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  place-service:
+    build: ./place-service
+    ports:
+      - "8001:8000"
+    environment:
+      PLACES_DATA: /srv/data/raw_places.csv
+
+# Added in later iterations:
+#   stage-service    (Iter 2)
+#   schedule-service (Iter 2)
+#   monitor          (Iter 3)
+#   alert-bot        (Iter 4)
