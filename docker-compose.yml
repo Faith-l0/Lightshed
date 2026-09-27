@@ -52,5 +52,13 @@ services:
       rabbitmq:
         condition: service_healthy
 
-# Added in Iteration 4:
-#   alert-bot
+  alert-bot:
+    build: ./alert-bot
+    ports:
+      - "8005:8000"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      SOCIAL_DRY_RUN: "1"   # logs + records posts instead of hitting a real API
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

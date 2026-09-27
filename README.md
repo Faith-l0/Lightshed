@@ -1,13 +1,13 @@
 # LightShed
 
 A distributed loadshedding information system. Independent services, communicating over HTTP
-and, from this iteration onward, a RabbitMQ message queue.
+and, from Iteration 3 onward, a RabbitMQ message queue.
 
 ## Status
 - [x] Iteration 1: Place-name service (data cleaning + validation API)
 - [x] Iteration 2: Stage service, Schedule service (inter-service HTTP calls)
 - [x] Iteration 3: Retries, `service.failed` / `stage.changed` events, Monitor + panic alerts
-- [ ] Iteration 4: AlertBot
+- [x] Iteration 4: AlertBot (public-facing notifications on stage changes / panics)
 
 ## Services
 
@@ -17,6 +17,7 @@ and, from this iteration onward, a RabbitMQ message queue.
 | stage-service       | 8002 | Holds/updates the current loadshedding stage                      |
 | schedule-service    | 8003 | Returns a schedule for a town; calls place-service + stage-service |
 | monitor            | 8004 | Consumes `service.failed` events, raises `panic.alert` on bursts  |
+| alert-bot          | 8005 | Consumes `stage.changed` / `panic.alert`, "posts" public alerts    |
 | rabbitmq           | 5672 (AMQP), 15672 (management UI, guest/guest) | Message broker |
 
 ## Run it
@@ -28,8 +29,8 @@ Try it end to end:
     curl "localhost:8001/places/validate?town=cape%20town"
     curl "localhost:8003/schedule?town=cape+town"
     curl -X PUT localhost:8002/stage -H "Content-Type: application/json" -d '{"stage": 4}'
-    curl localhost:8004/failures   # Monitor's view of recent service failures
-    curl localhost:8004/alerts     # Any panic alerts raised so far
+    curl localhost:8005/posts     # AlertBot should have "posted" about the stage change
+    curl localhost:8004/failures  # Monitor's view of recent service failures
 
 Without Docker, each service has its own venv:
 
@@ -39,15 +40,15 @@ Without Docker, each service has its own venv:
     pytest
     uvicorn app.main:app --reload --port <its port>
 
-## Message queue design
+## Message queue design (Iteration 3 & 4)
 
-One topic exchange, `lightshed`, with these routing keys so far:
+One topic exchange, `lightshed`, with these routing keys:
 
 | Routing key      | Published by      | Consumed by         |
 |-------------------|-------------------|----------------------|
-| `stage.changed`   | stage-service      | (Iteration 4: alert-bot) |
+| `stage.changed`   | stage-service      | alert-bot            |
 | `service.failed`  | schedule-service   | monitor              |
-| `panic.alert`     | monitor            | (Iteration 4: alert-bot) |
+| `panic.alert`     | monitor            | alert-bot            |
 
 **Fault tolerance decisions:**
 - Publishing an event is fire-and-forget: if RabbitMQ is down, the publishing
@@ -66,6 +67,12 @@ One topic exchange, `lightshed`, with these routing keys so far:
 - Monitor raises a `panic.alert` when a service fails 3+ times within 60
   seconds (`monitor/app/panic.py` — pure logic, unit tested without a broker).
 
+**AlertBot and "real" social media:** `alert-bot/app/main.py`'s `_post()`
+function is the single place a real platform API call would go. With
+`SOCIAL_DRY_RUN=1` (the default) it logs the post and stores it in memory,
+queryable at `GET /posts` — useful for demonstrating the behaviour without
+needing real API credentials.
+
 ## Place-name service contract
 
 `GET /places/validate?town=<town>&province=<optional>`
@@ -83,8 +90,13 @@ One topic exchange, `lightshed`, with these routing keys so far:
 - Rejected data rows are logged with a reason, not silently dropped.
 - Degrade gracefully vs. fail loudly is a deliberate per-dependency choice
   (see the Schedule service section above), not a blanket policy.
+- Monitoring is proactive: Monitor and AlertBot react to events pushed to
+  them, rather than something needing to poll or watch logs by hand.
 
 ## Known gaps / things to finish before submission
 - `place-service/data/raw_places.csv` is a small placeholder dataset — swap
   in the real one from your course and re-check the cleaning rules against it.
-- No AlertBot yet (Iteration 4).
+- AlertBot's social posting is a dry-run stub; wiring up a real platform is
+  optional depending on what your brief actually requires.
+- No authentication/authorization anywhere — probably fine for a student
+  project, but worth a line in your write-up saying so explicitly.
