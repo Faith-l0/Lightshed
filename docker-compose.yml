@@ -21,6 +21,11 @@ services:
     build: ./stage-service
     ports:
       - "8002:8000"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
 
   schedule-service:
     build: ./schedule-service
@@ -31,10 +36,21 @@ services:
       # as hostname) and the container's own port 8000, not the host-mapped ports above.
       PLACE_SERVICE_URL: http://place-service:8000
       STAGE_SERVICE_URL: http://stage-service:8000
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
       - place-service
       - stage-service
+      - rabbitmq
 
-# Added in later iterations:
-#   monitor          (Iter 3)
-#   alert-bot        (Iter 4)
+  monitor:
+    build: ./monitor
+    ports:
+      - "8004:8000"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+# Added in Iteration 4:
+#   alert-bot

@@ -1,14 +1,16 @@
 """Stage service.
 
-Holds the current loadshedding stage in memory and exposes it to other services.
-A real deployment would source this from Eskom's API or a control-room feed;
-here it's a simple settable value so Schedule/AlertBot have something to react to.
+Holds the current loadshedding stage in memory and exposes it to other
+services. When the stage actually changes, it publishes a `stage.changed`
+event to RabbitMQ so AlertBot (Iteration 4) can react without polling.
 """
 import logging
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+
+from .mq import publish_event
 
 log = logging.getLogger("stage-service")
 logging.basicConfig(level=logging.INFO)
@@ -59,12 +61,15 @@ def get_stage():
 
 
 @app.put("/stage")
-def set_stage(update: StageUpdate):
+async def set_stage(update: StageUpdate):
     if not (MIN_STAGE <= update.stage <= MAX_STAGE):
-        # Belt-and-braces: pydantic already enforces this, but keep an explicit
-        # domain check here since "valid stage" is a business rule, not just a type.
         raise HTTPException(422, f"stage must be between {MIN_STAGE} and {MAX_STAGE}")
     event = state.set_stage(update.stage)
+    if event["from_stage"] != event["to_stage"]:
+        # Best-effort: a broker outage must not stop the stage update itself
+        # from succeeding, so this is awaited but its failure is non-fatal
+        # (see mq.publish_event).
+        await publish_event("stage.changed", event)
     return event
 
 
