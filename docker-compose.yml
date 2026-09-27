@@ -17,8 +17,24 @@ services:
     environment:
       PLACES_DATA: /srv/data/raw_places.csv
 
+  stage-service:
+    build: ./stage-service
+    ports:
+      - "8002:8000"
+
+  schedule-service:
+    build: ./schedule-service
+    ports:
+      - "8003:8000"
+    environment:
+      # Service-to-service URLs use Docker Compose's internal DNS (service name
+      # as hostname) and the container's own port 8000, not the host-mapped ports above.
+      PLACE_SERVICE_URL: http://place-service:8000
+      STAGE_SERVICE_URL: http://stage-service:8000
+    depends_on:
+      - place-service
+      - stage-service
+
 # Added in later iterations:
-#   stage-service    (Iter 2)
-#   schedule-service (Iter 2)
 #   monitor          (Iter 3)
 #   alert-bot        (Iter 4)
